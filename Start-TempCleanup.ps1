@@ -54,14 +54,12 @@ foreach ($s in $SettingsList) {
   Set-ItemProperty -Path $StrPath -Name 'StateFlags0004' -Value 2 -ErrorAction SilentlyContinue
 }
 
-$Cleanmgr = 'System32\CleanMgr.exe'
-$CleanmgrPath = '{0}\{1}' -f $env:SystemRoot, $Cleanmgr
+$CleanmgrPath = '{0}\System32\CleanMgr.exe' -f $env:SystemRoot
 Start-Process -FilePath $CleanmgrPath -ArgumentList '/sagerun:4' -WindowStyle Hidden -Wait
 
 $Users = Get-ChildItem -Path 'C:\Users'
-$TempPath = 'AppData\Local\Temp'
 foreach ($u in $Users) {
-  $curTempPath = '{0}\{1}\*' -f $u.FullName, $TempPath
+  $curTempPath = '{0}\AppData\Local\Temp\*' -f $u.FullName
   if (Test-Path -Path $curTempPath) {
     Remove-Item -Path $curTempPath -Force -Recurse -ErrorAction Ignore
   }
