@@ -23,7 +23,7 @@
   Changes:  Initial version
 
 .EXAMPLE
-  PS> .\Start-TempCleaner.ps1
+  PS> .\Start-TempCleanup.ps1
 #>
 
 $SettingsList = @(
