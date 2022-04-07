@@ -75,4 +75,6 @@ foreach ($u in $Users) {
   }
 }
 Write-EventLog -LogName $LogName -Source 'Start-TempCleanup.ps1' -EntryType 'Information' -EventId 1 -Message 'Cleaning Temp completed.'
-Clear-RecycleBin -Force
+
+$RecyclePath = '{0}\$Recycle.bin\' -f $env:SystemDrive
+Get-ChildItem $RecyclePath -Force | Remove-Item -Recurse -force
