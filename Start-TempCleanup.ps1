@@ -26,14 +26,6 @@
   PS> .\Start-TempCleanup.ps1
 #>
 
-$LogName = 'TempCleanup'
-if ([System.Diagnostics.EventLog]::Exists($LogName -eq $False)) {
-  New-EventLog -LogName 'TempCleanup' -Source 'Start-TempCleanup.ps1'
-}
-
-Clear-EventLog $LogName
-
-Write-EventLog -LogName $LogName -Source 'Start-TempCleanup.ps1' -EntryType 'Information' -EventId 1 -Message 'Cleaning cleanmgr started.'
 $SettingsList = @(
   'Active Setup Temp Folders',
   'D3D Shader Cache',
@@ -55,19 +47,32 @@ $SettingsList = @(
   'Windows Error Reporting Files'
 )
 
-$RegeditPath = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches'
+$LogName = 'TempCleanup'
+if ([System.Diagnostics.EventLog]::Exists($LogName -eq $False)) {
+  New-EventLog -LogName 'TempCleanup' -Source 'Start-TempCleanup.ps1'
+}
 
+Write-EventLog -LogName $LogName -Source 'Start-TempCleanup.ps1' -EntryType 'Information' -EventId 1 -Message 'Cleaning cleanmgr started.'
+
+$RegeditPath = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches'
 foreach ($s in $SettingsList) {
   $StrPath = '{0}\{1}' -f $RegeditPath, $s
-  Set-ItemProperty -Path $StrPath -Name 'StateFlags0004' -Value 2 -ErrorAction SilentlyContinue
+  if (Test-Path -Path $StrPath) {
+    Set-ItemProperty -Path $StrPath -Name 'StateFlags0004' -Value 2
+  }
 }
 
 $CleanmgrPath = '{0}\System32\CleanMgr.exe' -f $env:SystemRoot
-Start-Process -FilePath $CleanmgrPath -ArgumentList '/sagerun:4' -WindowStyle Hidden -Wait
-Write-EventLog -LogName $LogName -Source 'Start-TempCleanup.ps1' -EntryType 'Information' -EventId 1 -Message 'Cleaning cleanmgr completed.'
+try {
+  Start-Process -FilePath $CleanmgrPath -ArgumentList '/sagerun:4' -WindowStyle Hidden -Wait
+  Write-EventLog -LogName $LogName -Source 'Start-TempCleanup.ps1' -EntryType 'Information' -EventId 1 -Message 'Cleaning cleanmgr completed.'
+}
+catch {
+  Write-EventLog -LogName $LogName -Source 'Start-TempCleanup.ps1' -EntryType 'Information' -EventId 1111 -Message 'Error cleanmgr'
+}
+
 
 $Users = Get-ChildItem -Path 'C:\Users'
-
 foreach ($u in $Users) {
   $curTempPath = '{0}\AppData\Local\Temp\*' -f $u.FullName
   if (Test-Path -Path $curTempPath) {
@@ -77,4 +82,10 @@ foreach ($u in $Users) {
 Write-EventLog -LogName $LogName -Source 'Start-TempCleanup.ps1' -EntryType 'Information' -EventId 1 -Message 'Cleaning Temp completed.'
 
 $RecyclePath = '{0}\$Recycle.bin\' -f $env:SystemDrive
-Get-ChildItem $RecyclePath -Force | Remove-Item -Recurse -force
+try {
+  Get-ChildItem $RecyclePath -Force | Remove-Item -Recurse -Force
+  Write-EventLog -LogName $LogName -Source 'Start-TempCleanup.ps1' -EntryType 'Information' -EventId 1 -Message 'Cleaning Recycle.bin completed.'
+}
+catch {
+  Write-EventLog -LogName $LogName -Source 'Start-TempCleanup.ps1' -EntryType 'Information' -EventId 1111 -Message 'Error Recycle.bin'
+}
