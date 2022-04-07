@@ -26,6 +26,14 @@
   PS> .\Start-TempCleanup.ps1
 #>
 
+$LogName = 'TempCleanup'
+if ([System.Diagnostics.EventLog]::Exists($LogName -eq $False)) {
+  New-EventLog -LogName 'TempCleanup' -Source 'Start-TempCleanup.ps1'
+}
+
+Clear-EventLog $LogName
+
+Write-EventLog -LogName $LogName -Source 'Start-TempCleanup.ps1' -EntryType 'Information' -EventId 1 -Message 'Cleaning cleanmgr started.'
 $SettingsList = @(
   'Active Setup Temp Folders',
   'D3D Shader Cache',
@@ -54,17 +62,17 @@ foreach ($s in $SettingsList) {
   Set-ItemProperty -Path $StrPath -Name 'StateFlags0004' -Value 2 -ErrorAction SilentlyContinue
 }
 
-$Cleanmgr = 'System32\CleanMgr.exe'
-$CleanmgrPath = '{0}\{1}' -f $env:SystemRoot, $Cleanmgr
+$CleanmgrPath = '{0}\System32\CleanMgr.exe' -f $env:SystemRoot
 Start-Process -FilePath $CleanmgrPath -ArgumentList '/sagerun:4' -WindowStyle Hidden -Wait
+Write-EventLog -LogName $LogName -Source 'Start-TempCleanup.ps1' -EntryType 'Information' -EventId 1 -Message 'Cleaning cleanmgr completed.'
 
 $Users = Get-ChildItem -Path 'C:\Users'
-$TempPath = 'AppData\Local\Temp'
+
 foreach ($u in $Users) {
-  $curTempPath = '{0}\{1}\*' -f $u.FullName, $TempPath
+  $curTempPath = '{0}\AppData\Local\Temp\*' -f $u.FullName
   if (Test-Path -Path $curTempPath) {
     Remove-Item -Path $curTempPath -Force -Recurse -ErrorAction Ignore
   }
 }
-
+Write-EventLog -LogName $LogName -Source 'Start-TempCleanup.ps1' -EntryType 'Information' -EventId 1 -Message 'Cleaning Temp completed.'
 Clear-RecycleBin -Force
