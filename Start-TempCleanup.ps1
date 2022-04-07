@@ -58,4 +58,4 @@ foreach ($u in $Users) {
     }
 }
 
-Clear-RecycleBin -Forc
+Clear-RecycleBin -Force
