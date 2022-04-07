@@ -19,7 +19,7 @@
   Version:  1.0.0
   Date:     2022-04-06
   Author:   Egor Naidovich
-  Author:   Viacheslav Eliseev
+  Author:   Viachaslav Eliseev
   Changes:  Initial version
 
 .EXAMPLE
@@ -52,14 +52,14 @@ if ([System.Diagnostics.EventLog]::Exists($LogName -eq $False)) {
   New-EventLog -LogName 'TempCleanup' -Source 'Start-TempCleanup.ps1'
 }
 
-Write-EventLog -LogName $LogName -Source 'Start-TempCleanup.ps1' -EntryType 'Information' -EventId 1 -Message 'Cleaning cleanmgr started.'
-
 $RegeditPath = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches'
 foreach ($s in $SettingsList) {
   $StrPath = '{0}\{1}' -f $RegeditPath, $s
   if (Test-Path -Path $StrPath) {
     Set-ItemProperty -Path $StrPath -Name 'StateFlags0004' -Value 2
+    Write-EventLog -LogName $LogName -Source 'Start-TempCleanup.ps1' -EntryType 'Information' -EventId 1 -Message "Adding flag in $s."
   }
+  Write-EventLog -LogName $LogName -Source 'Start-TempCleanup.ps1' -EntryType 'Information' -EventId 2 -Message "Flag in $s is already exists."
 }
 
 $CleanmgrPath = '{0}\System32\CleanMgr.exe' -f $env:SystemRoot
