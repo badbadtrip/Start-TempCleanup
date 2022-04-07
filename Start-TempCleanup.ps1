@@ -67,7 +67,10 @@ Start-Process -FilePath $CleanmgrPath -ArgumentList '/sagerun:4' -WindowStyle Hi
 Write-EventLog -LogName $LogName -Source 'Start-TempCleanup.ps1' -EntryType 'Information' -EventId 1 -Message 'Cleaning cleanmgr completed.'
 
 $Users = Get-ChildItem -Path 'C:\Users'
+<<<<<<< HEAD
 
+=======
+>>>>>>> 03914a8251e66f4b13d09490eae971adad030490
 foreach ($u in $Users) {
   $curTempPath = '{0}\AppData\Local\Temp\*' -f $u.FullName
   if (Test-Path -Path $curTempPath) {
