@@ -78,13 +78,11 @@ foreach ($s in $SettingsList) {
 WriteLog -LogString 'Cleanup started CleanMgr'
 Start-Process -FilePath $CleanmgrPath -ArgumentList '/sagerun:4' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
 
-
-$Users = Get-ChildItem -Path 'C:\Users'
-
 WriteLog -LogString 'Temp folder cleanup started'
 $CleanmgrPath = '{0}\System32\CleanMgr.exe' -f $env:SystemRoot
 Start-Process -FilePath $CleanmgrPath -ArgumentList '/sagerun:4' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
 
+WriteLog -LogString 'Clearing users Temp folders'
 $Users = Get-ChildItem -Path 'C:\Users'
 foreach ($u in $Users) {
   $curTempPath = '{0}\AppData\Local\Temp\*' -f $u.FullName
