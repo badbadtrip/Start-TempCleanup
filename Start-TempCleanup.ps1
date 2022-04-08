@@ -25,12 +25,15 @@
 .EXAMPLE
   PS> .\Start-TempCleanup.ps1
 #>
+WriteLog -LogString 'Script started'
 
 $Date = Get-Date -Format  dd-MM-yyyy
 $Logfile = (New-Item -Path "C:\Logs\$Date.log" -force)
 $RecyclePath = '{0}\$Recycle.bin\' -f $env:SystemDrive
 $CleanmgrPath = '{0}\System32\CleanMgr.exe' -f $env:SystemRoot
 $RegeditPath = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches'
+
+
 $SettingsList = @(
   'Active Setup Temp Folders',
   'D3D Shader Cache',
@@ -60,15 +63,16 @@ function WriteLog {
   Add-content $LogFile -value $LogMessage -Force
 }
 
-WriteLog -LogString 'Script started'
 WriteLog -LogString 'Registry patch launched'
 
+$RegeditPath = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches'
 foreach ($s in $SettingsList) {
   $StrPath = '{0}\{1}' -f $RegeditPath, $s
   if (Test-Path -Path $StrPath) {
     Set-ItemProperty -Path $StrPath -Name 'StateFlags0004' -Value 2
   }
 }
+
 
 WriteLog -LogString 'Cleanup started CleanMgr'
 Start-Process -FilePath $CleanmgrPath -ArgumentList '/sagerun:4' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
@@ -77,6 +81,10 @@ Start-Process -FilePath $CleanmgrPath -ArgumentList '/sagerun:4' -WindowStyle Hi
 $Users = Get-ChildItem -Path 'C:\Users'
 
 WriteLog -LogString 'Temp folder cleanup started'
+$CleanmgrPath = '{0}\System32\CleanMgr.exe' -f $env:SystemRoot
+Start-Process -FilePath $CleanmgrPath -ArgumentList '/sagerun:4' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+
+$Users = Get-ChildItem -Path 'C:\Users'
 foreach ($u in $Users) {
   $curTempPath = '{0}\AppData\Local\Temp\*' -f $u.FullName
   if (Test-Path -Path $curTempPath) {
@@ -84,7 +92,11 @@ foreach ($u in $Users) {
   }
 }
 
+
 WriteLog -LogString 'Launched recycle.bin cleanup for all users'
+$RecyclePath = '{0}\$Recycle.bin\' -f $env:SystemDrive
+Get-ChildItem $RecyclePath -Force | Remove-Item -Recurse -Force
+
 $RecyclePath = '{0}\$Recycle.bin\' -f $env:SystemDrive
 Get-ChildItem $RecyclePath -Force | Remove-Item -Recurse -Force
 
