@@ -25,6 +25,7 @@
 .EXAMPLE
   PS> .\Start-TempCleanup.ps1
 #>
+
 WriteLog -LogString 'Script started'
 
 $Date = Get-Date -Format  dd-MM-yyyy
@@ -97,7 +98,6 @@ WriteLog -LogString 'Launched recycle.bin cleanup for all users'
 $RecyclePath = '{0}\$Recycle.bin\' -f $env:SystemDrive
 Get-ChildItem $RecyclePath -Force | Remove-Item -Recurse -Force
 
-$RecyclePath = '{0}\$Recycle.bin\' -f $env:SystemDrive
-Get-ChildItem $RecyclePath -Force | Remove-Item -Recurse -Force
+
 
 WriteLog -LogString 'Script completed successfully'
