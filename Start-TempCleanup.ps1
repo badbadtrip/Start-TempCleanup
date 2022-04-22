@@ -22,51 +22,49 @@
   Author:   Viachaslav Eliseev
   Changes:  Initial version
 
-  Version:  1.0.1
-  Date:     2022-04-19
+  Version:  1.0.2
+  Date:     2022-04-22
   Author:   Egor Naidovich
-  Changes:  Added logging to EventLog and $env:SystemDrive\temp\logs\Start-TempCleanup\
+  Changes:  Added logging to EventLog and Logfile
 
 .EXAMPLE
   PS> .\Start-TempCleanup.ps1
 #>
-$watch = [System.Diagnostics.Stopwatch]::StartNew()
-$watch.Start()
-Import-Module AdminAbiitNlog 
 
-$Source = 'Start-TempCleanup'
+#Requires -Version 5.1
+#Requires -RunAsAdministrator
+#Requires -Modules @{ ModuleName="AdminAbiitNlog"; RequiredVersion="0.0.1" }
+
+$scriptName = $MyInvocation.MyCommand.Name.Replace('.ps1','')
 $LogName = 'AdminAbiit'
+$NlogConfig = Get-NLogConfiguration
 
-if (![System.Diagnostics.EventLog]::Exists($LogName)) {
-  New-EventLog -LogName 'AdminAbiit' -Source 'Start-TempCleanup.ps1'
-}
+$FileLogTarget = New-NLogTarget -FileTarget
+$FileLogTarget.FileName = '{0}/Logs/{1}/{2}.log' -f $env:windir, $LogName, $scriptName
+$FileLogTarget.Layout = '${longdate} | ${level:uppercase=true} | ${message:withexception=true}'
+$FileLogTarget.Name = 'FileTarget'
+$FileLogTarget.ArchiveFileName = '{0}/Logs/{1}/{2}{3}.log' -f $env:windir, $LogName, $scriptName, '#'
+$FileLogTarget.ArchiveEvery = 'Day'
+$FileLogTarget.ArchiveNumbering = 'Date'
+$FileLogTarget.ArchiveDateFormat = 'yyyyMMdd'
+$FileLogTarget.MaxArchiveFiles = '14'
 
-$Config = Get-NLogConfiguration 
+$EventLogTarget = New-NLogTarget -EventLogTarget
+$EventLogTarget.Log = $LogName
+$EventLogTarget.Layout = '${message}'
+$EventLogTarget.Name = 'EventTarget'
+$EventLogTarget.Source = $scriptName
 
-$FileLog = New-NLogTarget -FileTarget 
-$FileLog.FileName = "${basedir:processDir=true}/Temp/logs/AdminAbiit/logfile.log"
-$FileLog.Layout = '${longdate}${message:withexception=true}'
-$FileLog.Name = 'toFile'
-$FileLog.ArchiveFileName = "${basedir:processDir=true}/Temp/logs/AdminAbiit/Archive/logfile.{#}.log"
-$FileLog.ArchiveEvery = 'Day'
-$FileLog.ArchiveNumbering = 'Date'
-$FileLog.ArchiveDateFormat = 'yyyyMMdd'
-$FileLog.MaxArchiveFiles = '14'
+$NlogConfig.AddRule([NLog.LogLevel]::Debug, [Nlog.LogLevel]::Fatal, $FileLogTarget)
+$NlogConfig.AddRule([NLog.LogLevel]::Info, [Nlog.LogLevel]::Fatal, $EventLogTarget)
 
-$EventLog = New-NLogTarget -EventLogTarget
-$EventLog.Log = $LogName
-$EventLog.Layout = '${message}'
-$EventLog.Name = 'toEvent'
-$EventLog.Source = $Source
-
-$config.AddRule([NLog.LogLevel]::Debug, [Nlog.LogLevel]::Debug, $FileLog)
-$config.AddRule([NLog.LogLevel]::Info, [Nlog.LogLevel]::Fatal, $EventLog)
-Set-NLogConfiguration -Configuration $config
+Set-NLogConfiguration -Configuration $NlogConfig
 
 $log = Get-NLogLogger
+$msg = 'Started script: {0}' -f $scriptName
+$log.Info($msg)
 
 $RegeditPath = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches'
-
 $SettingsList = @(
   'Active Setup Temp Folders',
   'D3D Shader Cache',
@@ -88,38 +86,39 @@ $SettingsList = @(
   'Windows Error Reporting Files'
 )
 
-$PachTemp = @()
+$regeditFlag = 'StateFlags0004'
+$regeditValue = 2
+
 foreach ($s in $SettingsList) {
   $StrPath = '{0}\{1}' -f $RegeditPath, $s
   if (Test-Path -Path $StrPath) {
-    Set-ItemProperty -Path $StrPath -Name 'StateFlags0004' -Value 2
-    $PachTemp += $s + "`n"
+      if ($(Get-ItemProperty -path $StrPath -Name $regeditFlag -ErrorAction SilentlyContinue).$regeditFlag -ne $regeditValue) {
+        Set-ItemProperty -Path $StrPath -Name $regeditFlag -Value $regeditValue
+        $msg = 'regedit: {0} at {1} is set to: {2}' -f $regeditFlag, $s, $regeditValue
+        $log.Info($msg)
+      }
   }
 }
-$log.Info("PATH $RegeditPath :`n$PachTemp")
 
 $CleanmgrPath = '{0}\System32\CleanMgr.exe' -f $env:SystemRoot
 Start-Process -FilePath $CleanmgrPath -ArgumentList '/sagerun:4' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
 
-$ErrorTemp = @()
-$Users = Get-ChildItem -Path 'C:\Users'
+$usersPath = '{0}\Users' -f $env:SystemDrive
+$Users = Get-ChildItem -Path $usersPath
 
 foreach ($u in $Users) {
   $curTempPath = '{0}\AppData\Local\Temp\*' -f $u.FullName
   if (Test-Path -Path $curTempPath) {
-    Remove-Item -Path $curTempPath -Force -Recurse -ErrorAction SilentlyContinue -ErrorVariable ErrTmpClean
+    try {
+      Remove-Item -Path $curTempPath -Force -Recurse -ErrorAction Stop
+    } catch {
+      $log.Debug($_.ToString())
+    }
   }
 }
 
-foreach ($x in $ErrTmpClean) {
-  $ErrorTemp += $x.TargetObject.FullName + "`n"
-}
-$log.Debug("`nProcess cannot access files:`n$ErrorTemp")
+$RecyclePath = '{0}\$Recycle.bin\*' -f $env:SystemDrive
+Remove-Item -Path $RecyclePath -Recurse -Force
 
-$RecyclePath = '{0}\$Recycle.bin\' -f $env:SystemDrive
-Get-ChildItem $RecyclePath -Force | Remove-Item -Recurse -Force
-
-$Watch.Stop()
-$TimeRun = $Watch.Elapsed.TotalSeconds
-$TimeRun = [math]::Round($TimeRun, 2)
-$log.Info("Cleanup completed, run time: $TimeRun seconds")
+$log.Info("Cleanup completed.")
+[NLog.LogManager]::Shutdown()
