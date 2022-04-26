@@ -56,9 +56,9 @@
 $NLogVersion = '4.7.15'
 
 try {
-  $null = Get-Package -Name 'NLog' -ErrorAction 'SilentlyContinue' | Where-Object { $_.Version -eq $NLogVersion }
+  $null = Get-Package -Name 'NLog' -ErrorAction 'Stop' | Where-Object { $_.Version -eq $NLogVersion }
 }
-catch [ObjectNotFound] {
+catch {
   [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
   Write-Host 'Installing NLog...'
   Install-Package -Name 'NLog' `
