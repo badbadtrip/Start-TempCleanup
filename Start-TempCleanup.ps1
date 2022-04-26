@@ -1,31 +1,48 @@
-<#
-.SYNOPSIS
-  System cleanup script
+<#PSScriptInfo
 
-.DESCRIPTION
-  The cleaning parameters are written to the
-  'HKLM' registry branch:\Software\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches\',
-  the list of subfolders of which can be seen in the $Settings List.
-  Then the garbage is automatically cleaned by means of cleanmgr, taking into account the system folder.
-  After that, the Temp folder and the trash are cleared for all users in this system.
+.VERSION 1.0.2
 
-.INPUTS
-  None
+.GUID 05B9C36C-1FA3-5A11-A3E7-A728F3B4E4E3
 
-.OUTPUTS
-  None
+.AUTHOR Winbackend Team
 
-.NOTES
+.COMPANYNAME AdminAbiit
+
+.COPYRIGHT Copyright (c) 2022, AdminAbiit
+
+.TAGS AdminAbiit, Winbackend, Script, Server
+
+.EXTERNALMODULEDEPENDENCIES Nlog
+
+.RELEASENOTES
   Version:  1.0.0
   Date:     2022-04-06
   Author:   Egor Naidovich
   Author:   Viachaslav Eliseev
   Changes:  Initial version
 
-  Version:  1.0.2
+  Version:  1.0.1
   Date:     2022-04-22
   Author:   Egor Naidovich
   Changes:  Added logging to EventLog and Logfile
+
+  Version:  1.0.2
+  Date:     2022-04-23
+  Author:   Oleg Galushko
+  Changes:  Added stdout trace log
+            Removed AdminAbiitNlog module requirement
+             Removed cleanmgr.exe usage
+
+  Version:  1.0.3
+  Date:     2022-04-23
+  Author:   Egor Naidovich
+  Changes:  Fix logging to console
+             
+#>
+
+<#
+.DESCRIPTION
+  This script will remove all temporary files from users temp folders and recycle bins
 
 .EXAMPLE
   PS> .\Start-TempCleanup.ps1
@@ -33,92 +50,95 @@
 
 #Requires -Version 5.1
 #Requires -RunAsAdministrator
-#Requires -Modules @{ ModuleName="AdminAbiitNlog"; RequiredVersion="0.0.1" }
 
-$scriptName = $MyInvocation.MyCommand.Name.Replace('.ps1','')
-$LogName = 'AdminAbiit'
-$NlogConfig = Get-NLogConfiguration
 
-$FileLogTarget = New-NLogTarget -FileTarget
-$FileLogTarget.FileName = '{0}/Logs/{1}/{2}.log' -f $env:windir, $LogName, $scriptName
-$FileLogTarget.Layout = '${longdate} | ${level:uppercase=true} | ${message:withexception=true}'
-$FileLogTarget.Name = 'FileTarget'
-$FileLogTarget.ArchiveFileName = '{0}/Logs/{1}/{2}{3}.log' -f $env:windir, $LogName, $scriptName, '#'
-$FileLogTarget.ArchiveEvery = 'Day'
-$FileLogTarget.ArchiveNumbering = 'Date'
-$FileLogTarget.ArchiveDateFormat = 'yyyyMMdd'
-$FileLogTarget.MaxArchiveFiles = '14'
+# Install and assembly NLog
+$NLogVersion = '4.7.15'
 
-$EventLogTarget = New-NLogTarget -EventLogTarget
-$EventLogTarget.Log = $LogName
-$EventLogTarget.Layout = '${message}'
-$EventLogTarget.Name = 'EventTarget'
-$EventLogTarget.Source = $scriptName
-
-$NlogConfig.AddRule([NLog.LogLevel]::Debug, [Nlog.LogLevel]::Fatal, $FileLogTarget)
-$NlogConfig.AddRule([NLog.LogLevel]::Info, [Nlog.LogLevel]::Fatal, $EventLogTarget)
-
-Set-NLogConfiguration -Configuration $NlogConfig
-
-$log = Get-NLogLogger
-$msg = 'Started script: {0}' -f $scriptName
-$log.Info($msg)
-
-$RegeditPath = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches'
-$SettingsList = @(
-  'Active Setup Temp Folders',
-  'D3D Shader Cache',
-  'Delivery Optimization Files',
-  'Diagnostic Data Viewer database files',
-  'Downloaded Program Files',
-  'DownloadsFolder',
-  'Internet Cache Files',
-  'Old ChkDsk Files',
-  'Recycle Bin',
-  'Service Pack Cleanup',
-  'Setup Log Files',
-  'System error memory dump files',
-  'System error minidump files',
-  'Temporary Files',
-  'Thumbnail Cache',
-  'Update Cleanup',
-  'Windows Defender',
-  'Windows Error Reporting Files'
-)
-
-$regeditFlag = 'StateFlags0004'
-$regeditValue = 2
-
-foreach ($s in $SettingsList) {
-  $StrPath = '{0}\{1}' -f $RegeditPath, $s
-  if (Test-Path -Path $StrPath) {
-      if ($(Get-ItemProperty -path $StrPath -Name $regeditFlag -ErrorAction SilentlyContinue).$regeditFlag -ne $regeditValue) {
-        Set-ItemProperty -Path $StrPath -Name $regeditFlag -Value $regeditValue
-        $msg = 'regedit: {0} at {1} is set to: {2}' -f $regeditFlag, $s, $regeditValue
-        $log.Info($msg)
-      }
-  }
+try {
+  $null = Get-Package -Name 'NLog' -ErrorAction 'SilentlyContinue' | Where-Object { $_.Version -eq $NLogVersion }
 }
+catch [ObjectNotFound] {
+  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+  Write-Host 'Installing NLog...'
+  Install-Package -Name 'NLog' `
+    -ProviderName 'NuGet' `
+    -Source 'https://nuget.org/api/v2/' `
+    -Scope 'AllUsers' `
+    -RequiredVersion $NLogVersion `
+    -SkipDependencies `
+    -Force
+}
+$NlogPackage = Get-Package -Name 'NLog' -ErrorAction 'SilentlyContinue' | Where-Object { $_.Version -eq $NLogVersion }
+$NLogAssemblyPath = Split-Path -Path $NlogPackage.Source -Resolve -Parent
+$NLogDllPath = Join-Path -Path $NLogAssemblyPath -ChildPath 'lib\net45\NLog.dll'
 
-$CleanmgrPath = '{0}\System32\CleanMgr.exe' -f $env:SystemRoot
-Start-Process -FilePath $CleanmgrPath -ArgumentList '/sagerun:4' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+Write-Host "Loading NLog assembly from: $NLogDllPath"
+$null = [System.Reflection.Assembly]::LoadFrom($NLogDllPath)
 
-$usersPath = '{0}\Users' -f $env:SystemDrive
-$Users = Get-ChildItem -Path $usersPath
+
+$ScriptName = $MyInvocation.MyCommand.Name.Replace('.ps1', '')
+
+$LogName = 'AdminAbiit'
+$FileLogPath = '{0}/Logs/{1}/{2}' -f $env:windir, $LogName, $scriptName
+
+$NlogConfig = [NLog.Config.LoggingConfiguration]::New()
+
+$ConsoleTarget = [NLog.Targets.ColoredConsoleTarget]::New()
+$ConsoleTarget.Name = 'ConsoleTarget'
+
+$FileTarget = [NLog.Targets.FileTarget]::New()
+$FileTarget.Name = 'FileTarget'
+$FileTarget.ArchiveDateFormat = 'yyyyMMdd'
+$FileTarget.ArchiveEvery = 'Day'
+$FileTarget.ArchiveFileName = '{0}{1}.log' -f $FileLogPath, '{#}'
+$FileTarget.ArchiveNumbering = 'Date'
+$FileTarget.FileName = '{0}.log' -f $FileLogPath
+$FileTarget.Layout = '${longdate} | ${level:uppercase=true} | ${message:withexception=true}'
+$FileTarget.MaxArchiveFiles = '14'
+
+$EventTarget = [NLog.Targets.EventLogTarget]::New()
+$EventTarget.Name = 'EventTarget'
+$EventTarget.Layout = '${message}'
+$EventTarget.Log = $LogName
+$EventTarget.Source = $scriptName
+
+$NlogConfig.AddRule([NLog.LogLevel]::Trace, [Nlog.LogLevel]::Fatal, $ConsoleTarget)
+$NlogConfig.AddRule([NLog.LogLevel]::Trace, [Nlog.LogLevel]::Fatal, $FileTarget)
+$NlogConfig.AddRule([NLog.LogLevel]::Info, [Nlog.LogLevel]::Fatal, $EventTarget)
+
+[NLog.LogManager]::Configuration = $NlogConfig
+
+$log = [NLog.LogManager]::GetCurrentClassLogger()
+
+$log.Info('Starting script...')
+$log.Debug('RunAs: {0}', $env:UserName)
+
+$Users = Get-ChildItem -Path $('{0}\Users' -f $env:SystemDrive)
+
+$log.Debug('Founded users paths: {0}', $($Users.Name -join ', '))
+$log.Debug('Users count: {0}', $Users.Count)
+$log.Debug('Scaning users temp folders...')
 
 foreach ($u in $Users) {
   $curTempPath = '{0}\AppData\Local\Temp\*' -f $u.FullName
+  $files = Get-ChildItem -Path $curTempPath -Recurse -ErrorAction 'SilentlyContinue'
   if (Test-Path -Path $curTempPath) {
-    try {
-      Remove-Item -Path $curTempPath -Force -Recurse -ErrorAction Stop
-    } catch {
-      $log.Debug($_.ToString())
+    $size = [System.Math]::Round($($files | Measure-Object -Property 'Length' -Sum).Sum / 1GB, 3)
+    $log.Debug('{0}: {1} files / {2} GB', $curTempPath, $files.count, $size)
+    Get-ChildItem $curTempPath -Recurse -Force  | Sort-Object -Property FullName -Descending | ForEach-Object {
+      try {
+        Remove-Item -Path $_.FullName -Force -ErrorAction Stop;
+      }
+      catch { $log.Trace($_.ToString()) }
     }
   }
 }
 
 $RecyclePath = '{0}\$Recycle.bin\*' -f $env:SystemDrive
+$log.Info('Cleaning Recycle bin started')
 Remove-Item -Path $RecyclePath -Recurse -Force
+$log.Info('Cleaning Recycle bin finished')
 
-$log.Info("Cleanup completed.")
+$log.Info('Script finished.')
 [NLog.LogManager]::Shutdown()
