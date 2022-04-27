@@ -34,11 +34,14 @@
              Removed cleanmgr.exe usage
 
   Version:  1.0.3
-  Date:     2022-04-23
+  Date:     2022-04-27
   Author:   Egor Naidovich
   Changes:  Fix logging to console
              
 #>
+
+#Requires -Version 5.1
+#Requires -RunAsAdministrator
 
 <#
 .DESCRIPTION
@@ -47,10 +50,6 @@
 .EXAMPLE
   PS> .\Start-TempCleanup.ps1
 #>
-
-#Requires -Version 5.1
-#Requires -RunAsAdministrator
-
 
 # Install and assembly NLog
 $NLogVersion = '4.7.15'
@@ -126,12 +125,15 @@ foreach ($u in $Users) {
   if (Test-Path -Path $curTempPath) {
     $size = [System.Math]::Round($($files | Measure-Object -Property 'Length' -Sum).Sum / 1GB, 3)
     $log.Debug('{0}: {1} files / {2} GB', $curTempPath, $files.count, $size)
-    Get-ChildItem $curTempPath -Recurse -Force  | Sort-Object -Property FullName -Descending | ForEach-Object {
+    Get-ChildItem $curTempPath -Recurse -Force -File | Sort-Object -Property FullName -Descending | ForEach-Object {
       try {
         Remove-Item -Path $_.FullName -Force -ErrorAction Stop;
       }
       catch { $log.Trace($_.ToString()) }
     }
+    $folders = Get-ChildItem $curTempPath -recurse | Where-Object { $_.PSIsContainer -eq $True } | `
+      Where-Object { $_.GetFiles().Count -eq 0 }
+    $folders | Foreach-Object { Remove-Item $_.FullName -recurse -ErrorAction 'SilentlyContinue' }
   }
 }
 
